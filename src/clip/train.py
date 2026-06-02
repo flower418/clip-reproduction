@@ -26,6 +26,9 @@ def parse_args():
     p.add_argument("--log_every", type=int, default=100)
     p.add_argument("--save_dir", type=str, default="./checkpoints")
     p.add_argument("--resume", type=str, default=None)
+    p.add_argument("--wandb", action="store_true", help="enable wandb logging")
+    p.add_argument("--wandb_project", type=str, default="clip-reproduction")
+    p.add_argument("--wandb_name", type=str, default=None)
     return p.parse_args()
 
 
@@ -61,6 +64,15 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.save_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=os.path.join(args.save_dir, "logs"))
+
+    run = None
+    if args.wandb:
+        import wandb
+        run = wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_name or f"clip-vit-b32-bs{args.batch_size}",
+            config=vars(args),
+        )
 
     pairs = load_pairs(args.data)
     print(f"Loaded {len(pairs)} image-text pairs")
@@ -120,7 +132,15 @@ def train():
             if global_step % args.log_every == 0:
                 writer.add_scalar("loss", loss.item(), global_step)
                 writer.add_scalar("lr", optimizer.param_groups[0]["lr"], global_step)
+                writer.add_scalar("logit_scale", scale.item(), global_step)
                 pbar.set_postfix(loss=f"{loss.item():.4f}", lr=f"{optimizer.param_groups[0]['lr']:.6f}")
+                if run:
+                    run.log({
+                        "loss": loss.item(),
+                        "lr": optimizer.param_groups[0]["lr"],
+                        "logit_scale": scale.item(),
+                        "epoch": epoch,
+                    }, step=global_step)
 
         torch.save({
             "model": model.state_dict(),
@@ -129,6 +149,10 @@ def train():
             "global_step": global_step,
         }, os.path.join(args.save_dir, f"clip_epoch{epoch}.pt"))
         print(f"Saved checkpoint: epoch {epoch}")
+
+    writer.close()
+    if run:
+        run.finish()
 
 
 if __name__ == "__main__":
