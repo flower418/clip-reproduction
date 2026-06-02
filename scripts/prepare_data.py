@@ -5,19 +5,29 @@ import json
 import urllib.request
 import zipfile
 
+from tqdm import tqdm
+
 
 COCO_BASE = "http://images.cocodataset.org"
 ANNOTATIONS_URL = f"{COCO_BASE}/annotations/annotations_trainval2017.zip"
 
 
+class TqdmUpTo(tqdm):
+    def update_to(self, b=1, bsize=1, tsize=None):
+        if tsize is not None:
+            self.total = tsize
+        self.update(b * bsize - self.n)
+
+
 def download_and_extract(url, dest_dir):
     os.makedirs(dest_dir, exist_ok=True)
     fname = os.path.join(dest_dir, url.split("/")[-1])
-    if not os.path.exists(fname):
-        print(f"Downloading {url} ...")
-        urllib.request.urlretrieve(url, fname)
-    else:
+    if os.path.exists(fname):
         print(f"{fname} already exists, skipping download")
+    else:
+        print(f"Downloading {url} ...")
+        with TqdmUpTo(unit="B", unit_scale=True, unit_divisor=1024, miniters=1, desc=os.path.basename(fname)) as t:
+            urllib.request.urlretrieve(url, fname, reporthook=t.update_to)
 
     extract_dir = os.path.join(dest_dir, os.path.splitext(os.path.basename(fname))[0])
     if not os.path.isdir(extract_dir):
