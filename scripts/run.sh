@@ -22,7 +22,8 @@ else
 fi
 
 echo "===== Step 1: Install project ====="
-pip install -e ".[dev,wandb]"
+MIRROR="https://pypi.tuna.tsinghua.edu.cn/simple"
+pip install -e ".[dev,wandb]" -i "$MIRROR" --trusted-host pypi.tuna.tsinghua.edu.cn
 
 echo "===== Step 2: Download dataset ($DATASET) ====="
 python scripts/prepare_data.py "$DATASET" "./data/$DATASET"
