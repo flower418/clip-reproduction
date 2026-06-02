@@ -15,7 +15,7 @@ def prepare_flickr30k(data_dir: str = "./data/flickr30k"):
     from datasets import load_dataset
 
     print("Downloading Flickr30k (~5GB, 31k images)...")
-    dataset = load_dataset("nlphuji/flickr30k", split="test", cache_dir=data_dir)
+    dataset = load_dataset("nlphuji/flickr30k", split="test", cache_dir=data_dir, trust_remote_code=True)
 
     img_dir = os.path.join(data_dir, "images")
     os.makedirs(img_dir, exist_ok=True)
