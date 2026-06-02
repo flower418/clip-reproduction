@@ -1,11 +1,34 @@
 """Download COCO and generate pairs.txt for CLIP training."""
 import os
 import sys
-from torchvision.datasets import CocoCaptions
+import json
+import urllib.request
+import zipfile
+
+
+COCO_BASE = "http://images.cocodataset.org"
+ANNOTATIONS_URL = f"{COCO_BASE}/annotations/annotations_trainval2017.zip"
+
+
+def download_and_extract(url, dest_dir):
+    os.makedirs(dest_dir, exist_ok=True)
+    fname = os.path.join(dest_dir, url.split("/")[-1])
+    if not os.path.exists(fname):
+        print(f"Downloading {url} ...")
+        urllib.request.urlretrieve(url, fname)
+    else:
+        print(f"{fname} already exists, skipping download")
+
+    extract_dir = os.path.join(dest_dir, os.path.splitext(os.path.basename(fname))[0])
+    if not os.path.isdir(extract_dir):
+        os.makedirs(extract_dir, exist_ok=True)
+        print(f"Extracting {fname} ...")
+        with zipfile.ZipFile(fname, "r") as z:
+            z.extractall(dest_dir)
+    return dest_dir
 
 
 def prepare_coco(data_dir, split="val2017"):
-    """split: 'val2017' (~1GB, 5k images) or 'train2017' (~18GB, 118k images)"""
     os.makedirs(data_dir, exist_ok=True)
     pairs_path = os.path.join(data_dir, "pairs.txt")
 
@@ -13,22 +36,40 @@ def prepare_coco(data_dir, split="val2017"):
         print(f"pairs.txt already exists at {pairs_path}, skipping")
         return pairs_path
 
+    # 1. Download annotations
+    download_and_extract(ANNOTATIONS_URL, data_dir)
     ann_file = os.path.join(data_dir, "annotations", f"captions_{split}.json")
-    print(f"Downloading COCO {split}...")
-    dataset = CocoCaptions(root=data_dir, annFile=ann_file, download=True)
+
+    # 2. Download images
+    images_url = f"{COCO_BASE}/zips/{split}.zip"
+    download_and_extract(images_url, data_dir)
+
+    # 3. Parse captions and write pairs.txt
+    with open(ann_file, "r") as f:
+        data = json.load(f)
+
+    # Build image_id -> file_name map
+    id_to_file = {img["id"]: img["file_name"] for img in data["images"]}
+
+    # Group captions by image_id
+    img_captions = {}
+    for ann in data["annotations"]:
+        img_id = ann["image_id"]
+        if img_id not in img_captions:
+            img_captions[img_id] = []
+        img_captions[img_id].append(ann["caption"])
 
     img_dir = os.path.join(data_dir, split)
-    print(f"Writing {len(dataset)} image-caption pairs to {pairs_path}...")
+    n_images = len(img_captions)
+    print(f"Writing {n_images} image-caption pairs to {pairs_path}...")
 
     with open(pairs_path, "w") as f:
-        for i in range(len(dataset)):
-            img_id = dataset.ids[i]
-            img_path = os.path.join(img_dir, f"{img_id:012d}.jpg")
-            _, captions = dataset[i]
+        for img_id, captions in img_captions.items():
+            img_path = os.path.join(img_dir, id_to_file[img_id])
             for cap in captions:
                 f.write(f"{img_path}\t{cap}\n")
 
-    print(f"Done! {len(dataset)} images -> {pairs_path}")
+    print(f"Done! {n_images} images -> {pairs_path}")
     return pairs_path
 
 
